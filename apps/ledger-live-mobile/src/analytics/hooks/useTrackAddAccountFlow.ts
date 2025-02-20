@@ -14,16 +14,6 @@ export type UseTrackAddAccountFlow = {
   error: LedgerError | undefined | null;
 };
 
-type BoundedQueueOfFive = readonly [boolean, boolean, boolean, boolean, boolean];
-
-const boundedQueue = {
-  initialValue: [false, false, false, false, false] as BoundedQueueOfFive,
-  update: (currentState: boolean, queue: BoundedQueueOfFive): BoundedQueueOfFive => {
-    const [, ...tail] = queue;
-    return [...tail, currentState] as BoundedQueueOfFive;
-  },
-};
-
 /**
  * a custom hook to track events in the AddAccount flow.
  * tracks user interactions with in the AddAccount flow based on state changes and errors.
@@ -45,8 +35,6 @@ export const useTrackAddAccountFlow = ({
 }: UseTrackAddAccountFlow) => {
   const previousRequestOpenApp = useRef<string | null | undefined>(undefined);
   const previousAllowOpeningGranted = useRef<boolean | null | undefined>(undefined);
-  // using a bounded queue to track the last 5 values of allowOpeningGranted to cope with re-renders
-  const allowOpeningGrantedBoundedQueue = useRef<BoundedQueueOfFive>(boundedQueue.initialValue);
 
   useEffect(() => {
     if (location !== HOOKS_TRACKING_LOCATIONS.addAccount) return;
@@ -64,14 +52,19 @@ export const useTrackAddAccountFlow = ({
     }
 
     if (
-      allowOpeningGrantedBoundedQueue.current.includes(true) &&
+      previousAllowOpeningGranted.current &&
       !allowOpeningGranted &&
       error instanceof CantOpenDevice
     ) {
       // user lost connection after opening app
       track("Device connection lost", defaultPayload);
-      // reset queue
-      allowOpeningGrantedBoundedQueue.current = boundedQueue.initialValue;
+      previousAllowOpeningGranted.current = undefined;
+    }
+
+    if (previousAllowOpeningGranted.current && error instanceof LockedDeviceError) {
+      // device is locked while scanning for new accounts
+      track("Device locked", defaultPayload);
+      previousAllowOpeningGranted.current = undefined;
     }
 
     if (isScanningForNewAccounts && error instanceof CantOpenDevice) {
@@ -82,19 +75,11 @@ export const useTrackAddAccountFlow = ({
       track("Connection failed", defaultPayload);
     }
 
-    if (previousAllowOpeningGranted.current && error instanceof LockedDeviceError) {
-      // device is locked while scanning for new accounts
-      track("Device locked", defaultPayload);
-    }
-
-    if (previousAllowOpeningGranted.current !== allowOpeningGranted) {
-      allowOpeningGrantedBoundedQueue.current = boundedQueue.update(
-        !!allowOpeningGranted,
-        allowOpeningGrantedBoundedQueue.current,
-      );
+    if (allowOpeningGranted) {
+      // too many re-renders, this has to be reset once consumed as true
+      previousAllowOpeningGranted.current = allowOpeningGranted;
     }
 
     previousRequestOpenApp.current = requestOpenApp;
-    previousAllowOpeningGranted.current = allowOpeningGranted;
   }, [error, location, device, requestOpenApp, allowOpeningGranted, isScanningForNewAccounts]);
 };
