@@ -274,6 +274,63 @@ test.describe("Swap - Rejected on device", () => {
   );
 });
 
+const swapWithDifferentSeed = [
+  {
+    swap: new Swap(Account.ETH_1, Account.BTC_NATIVE_SEGWIT_1, "0.02", Fee.MEDIUM),
+    xrayTicket: "B2CQA-todo",
+    userData: "1AccountBTC1AccountETH",
+    errorMessage:
+      "This receiving account does not belong to the device you have connected. Please change and retry",
+  },
+  // {
+  //   swap: new Swap(Account.BTC_NATIVE_SEGWIT_1, Account.ETH_1, "0.00001", Fee.MEDIUM),
+  //   xrayTicket: "B2CQA-2758",
+  // },
+  // {
+  //   swap: new Swap(Account.ETH_USDT_1, Account.ETH_1, "150", Fee.MEDIUM),
+  //   xrayTicket: "B2CQA-2759",
+  // },
+  // {
+  //   swap: new Swap(Account.TRX_1, Account.ETH_1, "70", Fee.MEDIUM),
+  //   xrayTicket: "B2CQA-2739",
+  // },
+];
+
+for (const { swap, xrayTicket, userData, errorMessage } of swapWithDifferentSeed) {
+  test.describe.only("Swap - Using different seed", () => {
+    // (A & A => B)
+    setupEnv(true);
+
+    test.beforeEach(async () => {
+      const accountPair: string[] = [swap.accountToDebit, swap.accountToCredit].map(acc =>
+        acc.currency.speculosApp.name.replace(/ /g, "_"),
+      );
+      setExchangeDependencies(accountPair.map(name => ({ name })));
+    });
+
+    test.use({
+      userdata: userData,
+      speculosApp: app,
+    });
+
+    test(
+      "Swap using a different seed - Send A, Receive A, Device B",
+      {
+        annotation: { type: "TMS", description: xrayTicket },
+      },
+      async ({ app, electronApp }) => {
+        await addTmsLink(getDescription(test.info().annotations, "TMS").split(", "));
+
+        await performSwapUntilQuoteSelectionStep(app, electronApp, swap);
+        const selectedProvider = await app.swap.selectExchange(electronApp);
+
+        await performSwapUntilDeviceVerificationStep(app, electronApp, swap, selectedProvider);
+        await app.swapDrawer.checkErrorMessage(errorMessage);
+      },
+    );
+  });
+}
+
 const tooLowAmountForQuoteSwaps = [
   {
     swap: new Swap(Account.ETH_1, Account.BTC_NATIVE_SEGWIT_1, "0.001", Fee.MEDIUM),
