@@ -30,12 +30,14 @@ describe("createApi", () => {
   const mockTronConfig: TronConfig = { explorer: { url: "iamaurl" } } as TronConfig;
   let setCoinConfigSpy: jest.SpyInstance;
 
-  it("should set the coin config", () => {
+  it("should set the coin config value", () => {
     setCoinConfigSpy = jest.spyOn(coinConfig, "setCoinConfig");
 
     createApi(mockTronConfig);
 
     const config = setCoinConfigSpy.mock.calls[0][0]();
+
+    expect(setCoinConfigSpy).toHaveBeenCalled();
 
     expect(config).toEqual(
       expect.objectContaining({
